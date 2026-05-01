@@ -1,34 +1,48 @@
 from flask import Flask, jsonify, make_response, request
 import pandas as pd
+import time
 
 app = Flask(__name__)
 
-CAMINHO_ARQUIVO = "Comparativo.xlsx"
+# LINK DIRETO DO GOOGLE SHEETS (EXPORT XLSX)
+BASE_URL = "https://docs.google.com/spreadsheets/d/1tyhRHCMLoXA7_KoVgCcrpCtbEEMCZL64/export?format=xlsx"
 
 # -----------------------------
-# FUNÇÃO: carregar dados
+# FUNÇÃO: carregar dados (SEM CACHE)
 # -----------------------------
 def carregar_dados():
-    df = pd.read_excel(CAMINHO_ARQUIVO)
+    try:
+        # quebra cache com timestamp
+        url = BASE_URL + f"&nocache={int(time.time())}"
 
-    df.columns = (
-        df.columns
-        .str.strip()
-        .str.upper()
-        .str.replace('Ç', 'C')
-        .str.replace('Ã', 'A')
-        .str.replace('Á', 'A')
-        .str.replace('É', 'E')
-    )
+        df = pd.read_excel(url, engine="openpyxl")
 
-    df['DATA'] = pd.to_datetime(df['DATA'], errors='coerce')
-    df = df.dropna(subset=['DATA', 'VALOR'])
+        # padronizar colunas
+        df.columns = (
+            df.columns
+            .str.strip()
+            .str.upper()
+            .str.replace('Ç', 'C')
+            .str.replace('Ã', 'A')
+            .str.replace('Á', 'A')
+            .str.replace('É', 'E')
+        )
 
-    return df
+        # converter data
+        df['DATA'] = pd.to_datetime(df['DATA'], errors='coerce')
+
+        # limpar dados inválidos
+        df = df.dropna(subset=['DATA', 'VALOR'])
+
+        return df
+
+    except Exception as e:
+        print("Erro ao carregar dados:", e)
+        return pd.DataFrame()
 
 
 # -----------------------------
-# FUNÇÃO: filtro de data
+# FILTRO DE DATA
 # -----------------------------
 def aplicar_filtro_data(df):
     try:
@@ -48,16 +62,16 @@ def aplicar_filtro_data(df):
 
 
 # -----------------------------
-# FUNÇÃO: resposta sem cache
+# RESPOSTA SEM CACHE
 # -----------------------------
 def resposta_sem_cache(data):
     response = make_response(jsonify(data))
-    response.headers['Cache-Control'] = 'no-store'
+    response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
     return response
 
 
 # -----------------------------
-# ROTA: HOME
+# HOME
 # -----------------------------
 @app.route('/')
 def home():
@@ -65,7 +79,7 @@ def home():
 
 
 # -----------------------------
-# ROTA: DADOS
+# DADOS
 # -----------------------------
 @app.route('/dados')
 def dados():
@@ -78,7 +92,7 @@ def dados():
 
 
 # -----------------------------
-# ROTA: FATURAMENTO DIÁRIO
+# FATURAMENTO DIÁRIO
 # -----------------------------
 @app.route('/faturamento-diario')
 def faturamento_diario():
@@ -92,7 +106,7 @@ def faturamento_diario():
 
 
 # -----------------------------
-# ROTA: COMPATIBILIDADE (MENSAL)
+# FATURAMENTO MENSAL (COMPATIBILIDADE)
 # -----------------------------
 @app.route('/faturamento-mensal')
 def faturamento_mensal():
@@ -106,7 +120,7 @@ def faturamento_mensal():
 
 
 # -----------------------------
-# ROTA: COMPARATIVO DIÁRIO
+# COMPARATIVO DIÁRIO
 # -----------------------------
 @app.route('/comparativo-diario')
 def comparativo_diario():
@@ -114,7 +128,6 @@ def comparativo_diario():
     df = aplicar_filtro_data(df)
 
     df['DATA_DIA'] = df['DATA'].dt.date
-
     resultado = df.groupby('DATA_DIA')['VALOR'].sum().reset_index()
     resultado = resultado.sort_values(by='DATA_DIA')
 
@@ -131,7 +144,7 @@ def comparativo_diario():
 
 
 # -----------------------------
-# ROTA: FATURAMENTO CLIENTE
+# FATURAMENTO CLIENTE
 # -----------------------------
 @app.route('/faturamento-cliente')
 def faturamento_cliente():
@@ -144,7 +157,7 @@ def faturamento_cliente():
 
 
 # -----------------------------
-# ROTA: CLASSIFICACAO
+# CLASSIFICAÇÃO
 # -----------------------------
 @app.route('/classificacao')
 def classificacao():
@@ -157,7 +170,7 @@ def classificacao():
 
 
 # -----------------------------
-# ROTA: TOP CLIENTES
+# TOP CLIENTES
 # -----------------------------
 @app.route('/top-clientes')
 def top_clientes():
@@ -176,7 +189,7 @@ def top_clientes():
 
 
 # -----------------------------
-# ROTA: INDICADORES
+# INDICADORES
 # -----------------------------
 @app.route('/indicadores')
 def indicadores():
