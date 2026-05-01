@@ -3,7 +3,6 @@ import pandas as pd
 
 app = Flask(__name__)
 
-# Caminho do arquivo (na mesma pasta do projeto)
 CAMINHO_ARQUIVO = "Comparativo.xlsx"
 
 # -----------------------------
@@ -12,20 +11,24 @@ CAMINHO_ARQUIVO = "Comparativo.xlsx"
 def carregar_dados():
     df = pd.read_excel(CAMINHO_ARQUIVO)
 
-    # Padronizar colunas
-    df.columns = df.columns.str.upper()
+    df.columns = (
+        df.columns
+        .str.strip()
+        .str.upper()
+        .str.replace('Ç', 'C')
+        .str.replace('Ã', 'A')
+        .str.replace('Á', 'A')
+        .str.replace('É', 'E')
+    )
 
-    # Converter data
     df['DATA'] = pd.to_datetime(df['DATA'], errors='coerce')
-
-    # Remover linhas inválidas
     df = df.dropna(subset=['DATA', 'VALOR'])
 
     return df
 
 
 # -----------------------------
-# FUNÇÃO: aplicar filtro de data
+# FUNÇÃO: filtro de data
 # -----------------------------
 def aplicar_filtro_data(df):
     try:
@@ -39,7 +42,7 @@ def aplicar_filtro_data(df):
             df = df[df['DATA'] <= pd.to_datetime(data_fim)]
 
     except Exception as e:
-        print("Erro no filtro de data:", e)
+        print("Erro no filtro:", e)
 
     return df
 
@@ -62,7 +65,7 @@ def home():
 
 
 # -----------------------------
-# ROTA: DADOS BRUTOS
+# ROTA: DADOS
 # -----------------------------
 @app.route('/dados')
 def dados():
@@ -75,21 +78,46 @@ def dados():
 
 
 # -----------------------------
-# ROTA: FATURAMENTO MENSAL
+# ROTA: FATURAMENTO DIÁRIO
 # -----------------------------
-@app.route('/faturamento-mensal')
-def faturamento_mensal():
+@app.route('/faturamento-diario')
+def faturamento_diario():
     df = carregar_dados()
     df = aplicar_filtro_data(df)
 
-    df['MES'] = df['DATA'].dt.to_period('M').astype(str)
-    resultado = df.groupby('MES')['VALOR'].sum().reset_index()
+    df['DATA_DIA'] = df['DATA'].dt.date
+    resultado = df.groupby('DATA_DIA')['VALOR'].sum().reset_index()
 
     return resposta_sem_cache(resultado.to_dict(orient='records'))
 
 
 # -----------------------------
-# ROTA: FATURAMENTO POR CLIENTE
+# ROTA: COMPARATIVO DIÁRIO
+# -----------------------------
+@app.route('/comparativo-diario')
+def comparativo_diario():
+    df = carregar_dados()
+    df = aplicar_filtro_data(df)
+
+    df['DATA_DIA'] = df['DATA'].dt.date
+
+    resultado = df.groupby('DATA_DIA')['VALOR'].sum().reset_index()
+    resultado = resultado.sort_values(by='DATA_DIA')
+
+    resultado['VALOR_ANTERIOR'] = resultado['VALOR'].shift(1)
+
+    resultado['VARIACAO'] = (
+        (resultado['VALOR'] - resultado['VALOR_ANTERIOR']) /
+        resultado['VALOR_ANTERIOR']
+    ) * 100
+
+    resultado = resultado.fillna(0)
+
+    return resposta_sem_cache(resultado.to_dict(orient='records'))
+
+
+# -----------------------------
+# ROTA: FATURAMENTO CLIENTE
 # -----------------------------
 @app.route('/faturamento-cliente')
 def faturamento_cliente():
@@ -102,14 +130,14 @@ def faturamento_cliente():
 
 
 # -----------------------------
-# ROTA: CLASSIFICAÇÃO
+# ROTA: CLASSIFICACAO
 # -----------------------------
 @app.route('/classificacao')
 def classificacao():
     df = carregar_dados()
     df = aplicar_filtro_data(df)
 
-    resultado = df.groupby('CLASSIFICAÇÃO')['VALOR'].sum().reset_index()
+    resultado = df.groupby('CLASSIFICACAO')['VALOR'].sum().reset_index()
 
     return resposta_sem_cache(resultado.to_dict(orient='records'))
 
@@ -142,17 +170,17 @@ def indicadores():
     df = aplicar_filtro_data(df)
 
     resultado = {
-        "faturamento_total": float(df['VALOR'].sum()),
-        "media": float(df['VALOR'].mean()),
+        "faturamento_total": float(df['VALOR'].sum()) if not df.empty else 0,
+        "media": float(df['VALOR'].mean()) if not df.empty else 0,
         "quantidade_registros": int(len(df)),
-        "clientes_unicos": int(df['CLIENTE'].nunique())
+        "clientes_unicos": int(df['CLIENTE'].nunique()) if not df.empty else 0
     }
 
     return resposta_sem_cache(resultado)
 
 
 # -----------------------------
-# START APP
+# START
 # -----------------------------
 if __name__ == '__main__':
     app.run(debug=True)
