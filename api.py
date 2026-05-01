@@ -92,6 +92,20 @@ def faturamento_diario():
 
 
 # -----------------------------
+# ROTA: COMPATIBILIDADE (MENSAL)
+# -----------------------------
+@app.route('/faturamento-mensal')
+def faturamento_mensal():
+    df = carregar_dados()
+    df = aplicar_filtro_data(df)
+
+    df['MES'] = df['DATA'].dt.to_period('M').astype(str)
+    resultado = df.groupby('MES')['VALOR'].sum().reset_index()
+
+    return resposta_sem_cache(resultado.to_dict(orient='records'))
+
+
+# -----------------------------
 # ROTA: COMPARATIVO DIÁRIO
 # -----------------------------
 @app.route('/comparativo-diario')
